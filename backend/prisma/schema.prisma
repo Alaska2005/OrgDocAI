@@ -1,0 +1,158 @@
+// prisma/schema.prisma
+// OrgDoc AI - Database Schema
+// Run: npx prisma migrate dev --name init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Organization ─────────────────────────────────────────
+model Organization {
+  id          String   @id @default(uuid())
+  orgId       String   @unique // Human-readable ID e.g. ORG-001
+  name        String
+  passwordHash String
+  adminName   String
+  adminEmail  String   @unique
+  logoUrl     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members     User[]
+  events      Event[]
+  chatHistory ChatMessage[]
+
+  @@map("organizations")
+}
+
+// ─── User (Member) ────────────────────────────────────────
+model User {
+  id             String   @id @default(uuid())
+  name           String
+  email          String   @unique
+  passwordHash   String
+  role           UserRole @default(MEMBER)
+  avatarUrl      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  uploadedFiles  File[]
+  chatMessages   ChatMessage[]
+  activityLogs   ActivityLog[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+// ─── Event ────────────────────────────────────────────────
+model Event {
+  id          String      @id @default(uuid())
+  title       String
+  description String
+  date        DateTime
+  category    String
+  coordinator String
+  tags        String[]    // Array of tag strings
+  bannerColor String      @default("#6C63FF")
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  files       File[]
+  activityLogs ActivityLog[]
+
+  @@map("events")
+}
+
+// ─── File (Documents, Spreadsheets, Photos) ───────────────
+model File {
+  id          String   @id @default(uuid())
+  name        String
+  originalName String
+  type        FileType
+  mimeType    String
+  size        Int      // bytes
+  url         String   // Cloudinary URL or local path
+  publicId    String?  // Cloudinary public ID for deletion
+  isIndexed   Boolean  @default(false) // Has been embedded in ChromaDB
+  createdAt   DateTime @default(now())
+
+  eventId     String
+  event       Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  uploadedById String
+  uploadedBy   User @relation(fields: [uploadedById], references: [id])
+
+  @@map("files")
+}
+
+enum FileType {
+  DOCUMENT   // PDF, DOCX, TXT
+  SPREADSHEET // XLSX, CSV
+  IMAGE      // JPG, PNG, JPEG
+  VIDEO      // MP4, MOV
+}
+
+// ─── Chat Message ─────────────────────────────────────────
+model ChatMessage {
+  id        String      @id @default(uuid())
+  role      MessageRole
+  content   String
+  sources   Json?       // Array of source file references used in RAG
+  createdAt DateTime    @default(now())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  userId    String?
+  user      User? @relation(fields: [userId], references: [id])
+
+  @@map("chat_messages")
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+}
+
+// ─── Activity Log ─────────────────────────────────────────
+model ActivityLog {
+  id        String   @id @default(uuid())
+  action    String   // e.g. "uploaded file", "created event"
+  details   String?
+  createdAt DateTime @default(now())
+
+  userId    String
+  user      User @relation(fields: [userId], references: [id])
+
+  eventId   String?
+  event     Event? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@map("activity_logs")
+}
+
+// ─── Refresh Token ────────────────────────────────────────
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("refresh_tokens")
+}
