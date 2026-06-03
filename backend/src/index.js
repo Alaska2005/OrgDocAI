@@ -21,7 +21,10 @@ const PORT = process.env.PORT || 5000;
 // ─── Security Middleware ──────────────────────────────────
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: [
+    process.env.FRONTEND_URL,
+    'http://localhost:5173',
+  ].filter(Boolean),
   credentials: true,
 }));
 
@@ -65,8 +68,11 @@ app.use('*', (req, res) => {
 app.use(errorHandler);
 
 // ─── Start Server ─────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`\n🚀 OrgDoc AI Backend running on http://localhost:${PORT}`);
+//  '0.0.0.0' is required for Railway — without it the server
+//  binds only to localhost and Railway's health-check can't
+//  reach it, causing the deployment to hang indefinitely.
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n🚀 OrgDoc AI Backend running on port ${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}\n`);
 });
 
