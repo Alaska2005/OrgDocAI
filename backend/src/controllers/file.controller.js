@@ -1,25 +1,13 @@
 // src/controllers/file.controller.js
-// Handles file uploads to Cloudinary + triggers RAG indexing
+// Handles file uploads to Supabase Storage + triggers RAG indexing
 
 const { PrismaClient } = require('@prisma/client');
-const cloudinary = require('../utils/cloudinary');
+const { uploadFile: uploadToSupabase, deleteFile: deleteFromSupabase } = require('../utils/storage');
 const { indexFile, removeFileIndex } = require('../services/rag.service');
 const path = require('path');
 const fs = require('fs');
 
 const prisma = new PrismaClient();
-
-// ─── Validate Cloudinary Configuration ────────────────────
-const validateCloudinaryConfig = () => {
-  const required = ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'];
-  const missing = required.filter(key => 
-    !process.env[key] || process.env[key].startsWith('your_')
-  );
-  
-  if (missing.length > 0) {
-    throw new Error(`Missing or invalid Cloudinary config: ${missing.join(', ')}. Please check your .env file.`);
-  }
-};
 
 // ─── Determine File Type from MIME ────────────────────────
 const getFileType = (mimeType) => {
@@ -36,15 +24,12 @@ const getFileType = (mimeType) => {
 
   if (['video/mp4', 'video/quicktime', 'video/x-msvideo'].includes(mimeType)) return 'VIDEO';
 
-  return 'DOCUMENT'; // Default
+  return 'DOCUMENT';
 };
 
 // ─── Upload File ──────────────────────────────────────────
 const uploadFile = async (req, res, next) => {
   try {
-    // Validate Cloudinary config on each upload
-    validateCloudinaryConfig();
-
     const { eventId } = req.params;
     const file = req.file;
 
@@ -59,85 +44,40 @@ const uploadFile = async (req, res, next) => {
     if (!event) return res.status(404).json({ error: 'Event not found.' });
 
     const fileType = getFileType(file.mimetype);
-    const isPDF = file.mimetype === 'application/pdf';
 
-    console.log(file.mimetype);
-    console.log(`[FILE-UPLOAD] File type: ${fileType}, MIME: ${file.mimetype}, isPDF: ${isPDF}`);
+    // Build storage path: orgId/eventId/timestamp_filename
+    const safeName = file.originalname.replace(/\s+/g, '_');
+    const storagePath = `${req.user.orgId}/${eventId}/${Date.now()}_${safeName}`;
 
-    // Upload to Cloudinary
-    const uploadResult = await new Promise((resolve, reject) => {
-      const resourceType = file.mimetype === 'application/pdf' ? 'raw' : 'auto';
-      
-      console.log(`[CLOUDINARY-CONFIG] Uploading with resource_type: "${resourceType}", folder: "orgdoc/${req.user.orgId}/${eventId}"`);
-      
-      const uploadStream = cloudinary.uploader.upload_stream(
-        {
-          folder: `orgdoc/${req.user.orgId}/${eventId}`,
-          resource_type: resourceType,
-          public_id: `${Date.now()}_${file.originalname.replace(/\s+/g, '_')}`,
-        },
-        (error, result) => {
-          if (error) {
-            console.error('[CLOUDINARY-ERROR]', error);
-            reject(error);
-          } else {
-            console.log('[CLOUDINARY-SUCCESS] Result keys:', Object.keys(result).join(', '));
-            console.log(result.secure_url);
-            console.log('[CLOUDINARY-SUCCESS] secure_url:', result.secure_url);
-            console.log('[CLOUDINARY-SUCCESS] public_id:', result.public_id);
-            console.log('[CLOUDINARY-SUCCESS] resource_type (returned):', result.resource_type);
-            
-            // Verify raw resource type for PDFs
-            if (isPDF) {
-              console.log(`[PDF-UPLOAD] PDF uploaded with resource_type: "${result.resource_type}"`);
-              if (result.resource_type !== 'raw') {
-                console.warn(`[PDF-WARNING] Expected resource_type "raw" but got "${result.resource_type}"`);
-              }
-            }
-            resolve(result);
-          }
-        }
-      );
-      uploadStream.end(file.buffer);
-    });
+    console.log(`[FILE-UPLOAD] Uploading to Supabase path: ${storagePath}`);
 
-    // Verify secure_url exists before proceeding
-    if (!uploadResult.secure_url) {
-      console.error('[UPLOAD-VALIDATION] Missing secure_url in Cloudinary response:', uploadResult);
-      return res.status(500).json({ error: 'Cloudinary did not return file URL' });
-    }
+    // Upload to Supabase Storage
+    const { url, path: savedPath } = await uploadToSupabase(
+      file.buffer,
+      storagePath,
+      file.mimetype
+    );
 
-    // Validate URL format for PDFs
-    if (isPDF) {
-      console.log(`[PDF-URL-VALIDATION] URL starts with https:`, uploadResult.secure_url.startsWith('https'));
-      console.log(`[PDF-URL-VALIDATION] URL contains /raw/:`, uploadResult.secure_url.includes('/raw/'));
-      console.log(`[PDF-URL-VALIDATION] URL format: ${uploadResult.secure_url.substring(0, 100)}...`);
-      
-      // Ensure URL is a direct download URL, not a transformation URL
-      if (!uploadResult.secure_url.includes('/raw/')) {
-        console.warn(`[PDF-URL-WARNING] URL may not be a raw file URL: ${uploadResult.secure_url}`);
-      }
-    }
-
-    // Prepare database payload
-    const dbPayload = {
-      name: uploadResult.public_id.split('/').pop(),
-      originalName: file.originalname,
-      type: fileType,
-      mimeType: file.mimetype,
-      size: file.size,
-      url: uploadResult.secure_url,
-      publicId: uploadResult.public_id,
-      eventId,
-      uploadedById: req.user.userId,
-      isIndexed: false,
-    };
-    console.log('[DB-INSERT-PAYLOAD]', JSON.stringify(dbPayload, null, 2));
+    console.log(`[FILE-UPLOAD] Supabase upload success. URL: ${url}`);
 
     // Save file record to DB
-    const savedFile = await prisma.file.create({ data: dbPayload });
+    // publicId stores the storage path (used for deletion)
+    const savedFile = await prisma.file.create({
+      data: {
+        name: safeName,
+        originalName: file.originalname,
+        type: fileType,
+        mimeType: file.mimetype,
+        size: file.size,
+        url,
+        publicId: savedPath,  // storage path for deletion
+        eventId,
+        uploadedById: req.user.userId,
+        isIndexed: false,
+      },
+    });
 
-    console.log('[DB-INSERT-SUCCESS] File saved with ID:', savedFile.id);
+    console.log(`[FILE-UPLOAD] File saved to DB with ID: ${savedFile.id}`);
 
     // Log activity
     await prisma.activityLog.create({
@@ -149,9 +89,8 @@ const uploadFile = async (req, res, next) => {
       },
     });
 
-    // Trigger async RAG indexing for indexable file types
+    // Trigger async RAG indexing for documents and spreadsheets
     if (fileType === 'DOCUMENT' || fileType === 'SPREADSHEET') {
-      // Write buffer to temp file for extraction
       const tempPath = path.join('/tmp', `${savedFile.id}_${file.originalname}`);
       fs.writeFileSync(tempPath, file.buffer);
 
@@ -170,12 +109,11 @@ const uploadFile = async (req, res, next) => {
             data: { isIndexed: true },
           });
         }
-        // Clean up temp file
         if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
       }).catch(console.error);
     }
 
-    const responsePayload = {
+    res.status(201).json({
       id: savedFile.id,
       name: savedFile.originalName,
       type: savedFile.type,
@@ -183,11 +121,7 @@ const uploadFile = async (req, res, next) => {
       url: savedFile.url,
       mimeType: savedFile.mimeType,
       createdAt: savedFile.createdAt,
-    };
-    console.log('[API-RESPONSE-PAYLOAD]', JSON.stringify(responsePayload, null, 2));
-    console.log('[FILE-UPLOAD-COMPLETE] File URL:', savedFile.url);
-
-    res.status(201).json(responsePayload);
+    });
   } catch (err) {
     next(err);
   }
@@ -198,8 +132,6 @@ const getEventFiles = async (req, res, next) => {
   try {
     const { eventId } = req.params;
     const { type } = req.query;
-
-    console.log(`[GET-EVENT-FILES] Event: ${eventId}, Org: ${req.user.orgId}, Type filter: ${type || 'none'}`);
 
     const files = await prisma.file.findMany({
       where: {
@@ -213,11 +145,6 @@ const getEventFiles = async (req, res, next) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    console.log(`[GET-EVENT-FILES] Found ${files.length} files for event ${eventId}`);
-    files.forEach((file, index) => {
-      console.log(`[EVENT-FILE-${index}] ID: ${file.id}, Name: ${file.originalName}, URL: ${file.url}`);
-    });
-
     res.json({ files });
   } catch (err) {
     next(err);
@@ -227,8 +154,6 @@ const getEventFiles = async (req, res, next) => {
 // ─── Delete File ──────────────────────────────────────────
 const deleteFile = async (req, res, next) => {
   try {
-    console.log(`[DELETE-FILE] Attempting to delete file: ${req.params.id}`);
-
     const file = await prisma.file.findFirst({
       where: {
         id: req.params.id,
@@ -236,35 +161,24 @@ const deleteFile = async (req, res, next) => {
       },
     });
 
-    if (!file) {
-      console.warn(`[DELETE-FILE] File not found: ${req.params.id}`);
-      return res.status(404).json({ error: 'File not found.' });
-    }
+    if (!file) return res.status(404).json({ error: 'File not found.' });
 
-    console.log(`[DELETE-FILE] Found file: ${file.originalName}, publicId: ${file.publicId}, URL: ${file.url}`);
-
-    // Only admins can delete (enforced in middleware)
-    // Remove from Cloudinary
+    // Delete from Supabase Storage using stored path
     if (file.publicId) {
-      console.log(`[DELETE-FILE] Removing from Cloudinary with publicId: ${file.publicId}`);
-      const resourceType = file.type === 'IMAGE' || file.type === 'VIDEO' ? 'image' : 'raw';
-      const cloudinaryResult = await cloudinary.uploader.destroy(file.publicId, { resource_type: resourceType });
-      console.log(`[DELETE-FILE] Cloudinary deletion result:`, cloudinaryResult.result);
+      await deleteFromSupabase(file.publicId);
+      console.log(`[DELETE-FILE] Removed from Supabase Storage: ${file.publicId}`);
     }
 
-    // Remove from ChromaDB index
+    // Remove from RAG index if indexed
     if (file.isIndexed) {
-      console.log(`[DELETE-FILE] Removing from ChromaDB index`);
       await removeFileIndex(file.id, req.user.orgId);
     }
 
     // Remove from DB
     await prisma.file.delete({ where: { id: file.id } });
-    console.log(`[DELETE-FILE] File deleted successfully from database`);
 
     res.json({ message: 'File deleted successfully.' });
   } catch (err) {
-    console.error(`[DELETE-FILE] Error:`, err.message);
     next(err);
   }
 };
@@ -273,8 +187,6 @@ const deleteFile = async (req, res, next) => {
 const getAllFiles = async (req, res, next) => {
   try {
     const { type, search, page = 1, limit = 30 } = req.query;
-
-    console.log('[GET-ALL-FILES] Query params:', { type, search, page, limit, orgId: req.user.orgId });
 
     const files = await prisma.file.findMany({
       where: {
@@ -289,13 +201,8 @@ const getAllFiles = async (req, res, next) => {
         uploadedBy: { select: { name: true } },
       },
       orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
+      skip: (Number(page) - 1) * Number(limit),
       take: Number(limit),
-    });
-
-    console.log(`[GET-ALL-FILES] Found ${files.length} files`);
-    files.forEach((file, index) => {
-      console.log(`[FILE-${index}] ID: ${file.id}, Name: ${file.originalName}, URL: ${file.url}, Event: ${file.event?.title}`);
     });
 
     res.json({ files });
