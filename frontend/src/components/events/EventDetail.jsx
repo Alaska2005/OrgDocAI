@@ -5,19 +5,16 @@ import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { useDropzone } from 'react-dropzone';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
-import {
-  ArrowLeft, FileText, Sheet, Image as ImageIcon, Trash2,
-  Download, Eye, Upload, X,
-} from 'lucide-react';
+import { ArrowLeft, FileText, Sheet, Image as ImageIcon, Trash2, Download, Eye } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { eventsAPI, filesAPI } from '../../utils/api';
 import { getPreviewUrl, getDownloadUrl, isPdfFile } from '../../utils/fileUtils';
 import useAuthStore from '../../store/authStore';
 
 const TABS = [
-  { id: 'documents',    label: 'Documents',     icon: FileText,   accept: '.pdf,.docx,.doc,.txt' },
-  { id: 'spreadsheets', label: 'Excel / Data',  icon: Sheet,      accept: '.xlsx,.xls,.csv' },
-  { id: 'images',       label: 'Photos & Media',icon: ImageIcon,  accept: '.jpg,.jpeg,.png,.webp,.gif' },
+  { id: 'documents',    label: 'Documents',      icon: FileText,  accept: '.pdf,.docx,.doc,.txt' },
+  { id: 'spreadsheets', label: 'Excel / Data',   icon: Sheet,     accept: '.xlsx,.xls,.csv' },
+  { id: 'images',       label: 'Photos & Media', icon: ImageIcon, accept: '.jpg,.jpeg,.png,.webp,.gif' },
 ];
 
 const FILE_ICONS = {
@@ -50,7 +47,6 @@ function UploadZone({ onDrop, accept, loading, progress }) {
         <span className="text-purple-600 font-semibold">Drag & drop files here</span> or click to browse
       </p>
       <p className="text-xs text-gray-400 mt-1">Supported: {accept}</p>
-
       {loading && (
         <div className="mt-3">
           <div className="h-2 bg-purple-100 rounded-full overflow-hidden w-48 mx-auto">
@@ -69,7 +65,8 @@ function UploadZone({ onDrop, accept, loading, progress }) {
 
 function FileRow({ file, onDelete, isAdmin }) {
   const meta = FILE_ICONS[file.mimeType] || { icon: '📄', color: 'bg-gray-50 text-gray-500' };
-  const sizeKB = (file.size / 1024).toFixed(0);
+  const sizeKB = Number((file.size / 1024).toFixed(0));
+  const sizeText = sizeKB < 1024 ? `${sizeKB} KB` : `${(sizeKB / 1024).toFixed(1)} MB`;
 
   return (
     <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100 hover:bg-white hover:shadow-sm transition-all">
@@ -79,12 +76,11 @@ function FileRow({ file, onDelete, isAdmin }) {
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-gray-800 truncate">{file.originalName}</p>
         <p className="text-xs text-gray-400">
-          {sizeKB < 1024 ? `${sizeKB} KB` : `${(sizeKB / 1024).toFixed(1)} MB`} ·{' '}
-          {format(new Date(file.createdAt), 'MMM d, yyyy')} · by {file.uploadedBy?.name}
+          {sizeText} · {format(new Date(file.createdAt), 'MMM d, yyyy')} · by {file.uploadedBy?.name}
         </p>
       </div>
       <div className="flex items-center gap-1.5">
-        
+        <a
           href={getPreviewUrl(file)}
           target="_blank"
           rel="noreferrer"
@@ -93,7 +89,7 @@ function FileRow({ file, onDelete, isAdmin }) {
         >
           <Eye size={14} />
         </a>
-        
+        <a
           href={getDownloadUrl(file)}
           download={file.originalName}
           className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-all"
@@ -282,8 +278,12 @@ export default function EventDetail() {
                   >
                     <img src={file.url} alt={file.originalName} className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-purple-900/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                      <a href={file.url} target="_blank" rel="noreferrer"
-                        className="w-8 h-8 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white hover:bg-white/40">
+                      <a
+                        href={file.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="w-8 h-8 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white hover:bg-white/40"
+                      >
                         <Eye size={14} />
                       </a>
                       {isAdmin && (
