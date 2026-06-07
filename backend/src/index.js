@@ -16,6 +16,7 @@ const analyticsRoutes = require('./routes/analytics.routes');
 const { errorHandler } = require('./middleware/error.middleware');
 
 const app = express();
+app.set('trust proxy', 1); // ← add this line
 const PORT = process.env.PORT || 5000;
 
 // ─── Security Middleware ──────────────────────────────────
