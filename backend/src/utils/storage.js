@@ -2,6 +2,7 @@
 // Supabase Storage utility — replaces Cloudinary
 
 const { createClient } = require('@supabase/supabase-js');
+const ws = require('ws');
 
 const BUCKET = 'orgdocai';
 
@@ -14,7 +15,9 @@ const getSupabase = () => {
     if (!url || !key) {
       throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in environment variables.');
     }
-    _supabase = createClient(url, key);
+    _supabase = createClient(url, key, {
+      realtime: { transport: ws },
+    });
   }
   return _supabase;
 };
