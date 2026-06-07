@@ -4,7 +4,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const ws = require('ws');
 
-const BUCKET = 'orgdocai';
+const BUCKET = 'orgdoc-files';
 
 let _supabase = null;
 
