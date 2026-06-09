@@ -3,21 +3,23 @@
 
 import axios from 'axios';
 
+const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'https://orgdocai-production.up.railway.app/api',
+  baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
 });
 
-// ─── Request Interceptor — attach access token ─────────────
+// ─── Request Interceptor — attach access token ────────────
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-// ─── Response Interceptor — auto-refresh on 401 ────────────
+// ─── Response Interceptor — auto-refresh on 401 ───────────
 let isRefreshing = false;
-let failedQueue = [];
+let failedQueue  = [];
 
 const processQueue = (error, token = null) => {
   failedQueue.forEach((prom) => (error ? prom.reject(error) : prom.resolve(token)));
@@ -40,14 +42,16 @@ api.interceptors.response.use(
       }
 
       original._retry = true;
-      isRefreshing = true;
+      isRefreshing    = true;
 
       try {
         const refreshToken = localStorage.getItem('refreshToken');
         if (!refreshToken) throw new Error('No refresh token');
 
-        const { data } = await axios.post(`${import.meta.env.VITE_API_URL || 'https://orgdocai-production.up.railway.app/api'}/auth/refresh`, { refreshToken });
-        localStorage.setItem('accessToken', data.accessToken);
+        // ✅ Use BASE_URL so this works on mobile and production
+        const { data } = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken });
+
+        localStorage.setItem('accessToken',  data.accessToken);
         localStorage.setItem('refreshToken', data.refreshToken);
 
         processQueue(null, data.accessToken);
@@ -70,23 +74,23 @@ api.interceptors.response.use(
 // ─── Auth API ─────────────────────────────────────────────
 export const authAPI = {
   register: (data) => api.post('/auth/register', data),
-  login: (data) => api.post('/auth/login', data),
+  login:    (data) => api.post('/auth/login',    data),
   logout: (refreshToken) => api.post('/auth/logout', { refreshToken }),
   me: () => api.get('/auth/me'),
 };
 
 // ─── Events API ───────────────────────────────────────────
 export const eventsAPI = {
-  list: (params) => api.get('/events', { params }),
-  get: (id) => api.get(`/events/${id}`),
-  create: (data) => api.post('/events', data),
+  list:   (params) => api.get('/events',       { params }),
+  get:    (id)     => api.get(`/events/${id}`),
+  create: (data)   => api.post('/events',      data),
   update: (id, data) => api.put(`/events/${id}`, data),
-  delete: (id) => api.delete(`/events/${id}`),
+  delete: (id)     => api.delete(`/events/${id}`),
 };
 
 // ─── Files API ────────────────────────────────────────────
 export const filesAPI = {
-  getAll: (params) => api.get('/files', { params }),
+  getAll:     (params)   => api.get('/files', { params }),
   getByEvent: (eventId, params) => api.get(`/files/event/${eventId}`, { params }),
   upload: (eventId, formData, onProgress) =>
     api.post(`/files/event/${eventId}/upload`, formData, {
@@ -103,9 +107,9 @@ export const filesAPI = {
 
 // ─── Chat API ─────────────────────────────────────────────
 export const chatAPI = {
-  send: (message) => api.post('/chat', { message }),
-  history: (params) => api.get('/chat/history', { params }),
-  clear: () => api.delete('/chat/history'),
+  send:    (message) => api.post('/chat',         { message }),
+  history: (params)  => api.get('/chat/history',  { params }),
+  clear:   ()        => api.delete('/chat/history'),
 };
 
 // ─── Analytics API ────────────────────────────────────────
