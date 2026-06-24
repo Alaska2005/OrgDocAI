@@ -10,19 +10,19 @@ import useAuthStore from '../../store/authStore';
 
 const TYPE_FILTERS = [
   { value: '',            label: 'All Files' },
-  { value: 'DOCUMENT',   label: '📄 Documents' },
-  { value: 'SPREADSHEET',label: '📊 Spreadsheets' },
-  { value: 'IMAGE',      label: '🖼️ Images' },
+  { value: 'DOCUMENT',   label: 'Documents' },
+  { value: 'SPREADSHEET',label: 'Spreadsheets' },
+  { value: 'IMAGE',      label: 'Images' },
 ];
 
 const FILE_ICONS = {
-  'application/pdf': '📕',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '📘',
-  'text/plain': '📄',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '📗',
-  'text/csv': '📊',
-  'image/jpeg': '🖼️',
-  'image/png': '🖼️',
+  'application/pdf': '',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '',
+  'text/plain': '',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '',
+  'text/csv': '',
+  'image/jpeg': '',
+  'image/png': '',
 };
 
 export default function DocumentsPage() {
@@ -92,7 +92,6 @@ export default function DocumentsPage() {
           </div>
         ) : files.length === 0 ? (
           <div className="p-16 text-center">
-            <p className="text-3xl mb-2">📭</p>
             <p className="font-heading font-bold text-gray-600">No files found</p>
             <p className="text-sm text-gray-400 mt-1">Upload files inside an event to see them here.</p>
           </div>
@@ -115,7 +114,7 @@ export default function DocumentsPage() {
                   <tr key={file.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2.5">
-                        <span className="text-xl">{FILE_ICONS[file.mimeType] || '📄'}</span>
+                        <span className="text-xl">{FILE_ICONS[file.mimeType] || ''}</span>
                         <span className="font-medium text-gray-800 truncate max-w-48">{file.originalName}</span>
                       </div>
                     </td>

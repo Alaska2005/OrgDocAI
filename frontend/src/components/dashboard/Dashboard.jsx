@@ -40,7 +40,7 @@ export default function Dashboard() {
       {/* Welcome */}
       <div>
         <h2 className="font-heading font-bold text-xl md:text-2xl text-gray-900">
-          Welcome back, {organization?.name} 👋
+          Welcome back, {organization?.name}
         </h2>
         <p className="text-gray-400 text-sm mt-1">
           Here's an overview of your organization's documentation.
@@ -107,7 +107,7 @@ export default function Dashboard() {
           {recentActivity.map((log, i) => (
             <div key={log.id} className="flex gap-3 items-start">
               <div className="w-7 h-7 rounded-full bg-purple-100 border-2 border-purple-300 flex items-center justify-center text-xs flex-shrink-0 relative">
-                {log.action.includes('file') ? '📄' : log.action.includes('photo') ? '🖼️' : '📅'}
+                {''}
                 {i < recentActivity.length - 1 && (
                   <span className="absolute top-full left-1/2 -translate-x-1/2 w-px h-4 bg-gray-100" />
                 )}
