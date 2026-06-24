@@ -1,7 +1,7 @@
 // src/components/events/EventCard.jsx
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
-import { FileText, Sheet, Image, ArrowRight, Calendar, User } from 'lucide-react';
+import { FileText, Sheet, Image, ArrowRight, Calendar } from 'lucide-react';
 
 const CAT_STYLES = {
   Technology: 'bg-purple-100 text-purple-700',
@@ -20,9 +20,9 @@ const CAT_COLORS = {
 };
 
 export default function EventCard({ event }) {
-  const color   = CAT_COLORS[event.category] || '#6C63FF';
-  const style   = CAT_STYLES[event.category]  || 'bg-gray-100 text-gray-700';
-  const counts  = event.fileCounts || {};
+  const color    = CAT_COLORS[event.category] || '#6C63FF';
+  const style    = CAT_STYLES[event.category]  || 'bg-gray-100 text-gray-700';
+  const counts   = event.fileCounts || {};
   const initials = event.coordinator?.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2) || '??';
 
   return (
@@ -33,13 +33,20 @@ export default function EventCard({ event }) {
         <div className="h-1.5 w-full" style={{ background: color }} />
 
         <div className="p-4 flex flex-col flex-1">
-          {/* Category badge */}
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold mb-3 w-fit ${style}`}>
-            {event.category}
-          </span>
+          {/* Category + arrow row */}
+          <div className="flex items-center justify-between mb-3">
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold w-fit ${style}`}>
+              {event.category}
+            </span>
+            <span className="w-7 h-7 rounded-full flex items-center justify-center text-white
+                             group-hover:rotate-45 transition-transform duration-200 flex-shrink-0"
+                  style={{ background: color }}>
+              <ArrowRight size={13} />
+            </span>
+          </div>
 
           {/* Title */}
-          <h4 className="font-heading font-bold text-sm text-gray-900 mb-2 leading-snug line-clamp-2">
+          <h4 className="font-heading font-bold text-sm md:text-base text-gray-900 mb-1.5 leading-snug line-clamp-2">
             {event.title}
           </h4>
 
@@ -59,33 +66,30 @@ export default function EventCard({ event }) {
                    style={{ background: color }}>
                 {initials}
               </div>
-              <span className="truncate max-w-16">{event.coordinator?.split(' ')[0]}</span>
+              <span className="truncate max-w-20">{event.coordinator?.split(' ')[0]}</span>
             </span>
           </div>
 
-          {/* File counts + arrow */}
-          <div className="flex items-center gap-1.5 pt-3 border-t border-gray-100">
-            {(counts.DOCUMENT || 0) > 0 && (
-              <span className="flex items-center gap-1 text-[10px] text-gray-400 bg-gray-50 px-2 py-1 rounded-lg border border-gray-100">
-                <FileText size={10} /> {counts.DOCUMENT}
-              </span>
-            )}
-            {(counts.SPREADSHEET || 0) > 0 && (
-              <span className="flex items-center gap-1 text-[10px] text-gray-400 bg-gray-50 px-2 py-1 rounded-lg border border-gray-100">
-                <Sheet size={10} /> {counts.SPREADSHEET}
-              </span>
-            )}
-            {(counts.IMAGE || 0) > 0 && (
-              <span className="flex items-center gap-1 text-[10px] text-gray-400 bg-gray-50 px-2 py-1 rounded-lg border border-gray-100">
-                <Image size={10} /> {counts.IMAGE}
-              </span>
-            )}
-            <span className="ml-auto w-7 h-7 rounded-full flex items-center justify-center text-white
-                             group-hover:rotate-45 transition-transform duration-200 flex-shrink-0"
-                  style={{ background: color }}>
-              <ArrowRight size={13} />
-            </span>
-          </div>
+          {/* File counts */}
+          {(counts.DOCUMENT > 0 || counts.SPREADSHEET > 0 || counts.IMAGE > 0) && (
+            <div className="flex items-center gap-1.5 pt-3 border-t border-gray-100">
+              {(counts.DOCUMENT || 0) > 0 && (
+                <span className="flex items-center gap-1 text-[10px] text-gray-400 bg-gray-50 px-2 py-1 rounded-lg border border-gray-100">
+                  <FileText size={10} /> {counts.DOCUMENT}
+                </span>
+              )}
+              {(counts.SPREADSHEET || 0) > 0 && (
+                <span className="flex items-center gap-1 text-[10px] text-gray-400 bg-gray-50 px-2 py-1 rounded-lg border border-gray-100">
+                  <Sheet size={10} /> {counts.SPREADSHEET}
+                </span>
+              )}
+              {(counts.IMAGE || 0) > 0 && (
+                <span className="flex items-center gap-1 text-[10px] text-gray-400 bg-gray-50 px-2 py-1 rounded-lg border border-gray-100">
+                  <Image size={10} /> {counts.IMAGE}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </Link>

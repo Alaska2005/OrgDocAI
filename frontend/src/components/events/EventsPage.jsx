@@ -110,7 +110,7 @@ export default function EventsPage() {
 
       {/* Grid */}
       {isLoading ? (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
           {[...Array(6)].map((_, i) => <div key={i} className="card h-52 animate-pulse bg-gray-100" />)}
         </div>
       ) : events.length === 0 ? (
@@ -122,7 +122,7 @@ export default function EventsPage() {
           <p className="text-sm text-gray-400 mt-1">Try changing your filters or create a new event.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
           {events.map((event, i) => (
             <motion.div key={event.id}
                         initial={{ opacity: 0, y: 10 }}
