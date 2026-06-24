@@ -20,11 +20,6 @@ const NAV_ITEMS = [
   { to: '/chat',      label: 'AI Assistant', icon: Bot, badge: 'AI' },
 ];
 
-const QUICK_LINKS = [
-  { to: '/events?category=Technology', label: 'Tech Events',    emoji: '💻' },
-  { to: '/events?category=Science',    label: 'Science Events', emoji: '🔬' },
-];
-
 const CAT_COLORS = {
   Technology: 'bg-purple-100 text-purple-700',
   Science:    'bg-emerald-100 text-emerald-700',
@@ -34,7 +29,7 @@ const CAT_COLORS = {
 };
 
 // ─── Global Search ────────────────────────────────────────
-function GlobalSearch() {
+function GlobalSearch({ onClose }) {
   const [query,  setQuery]  = useState('');
   const [open,   setOpen]   = useState(false);
   const navigate            = useNavigate();
@@ -66,12 +61,16 @@ function GlobalSearch() {
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
-  const handleSelect = (eventId) => { navigate(`/events/${eventId}`); setQuery(''); setOpen(false); };
-  const handleKeyDown = (e) => { if (e.key === 'Enter' && results.length > 0) handleSelect(results[0].id); };
+  const handleSelect = (eventId) => {
+    navigate(`/events/${eventId}`);
+    setQuery('');
+    setOpen(false);
+    onClose?.();
+  };
 
   return (
-    <div ref={wrapperRef} className="relative">
-      <div className={`flex items-center gap-2 bg-gray-50 border rounded-xl px-3 py-2 w-64 transition-all duration-200
+    <div ref={wrapperRef} className="relative w-full">
+      <div className={`flex items-center gap-2 bg-gray-50 border rounded-xl px-3 py-2 transition-all duration-200
                        ${open ? 'border-purple-400 ring-2 ring-purple-100 bg-white' : 'border-gray-200'}`}>
         <Search size={14} className="text-gray-400 flex-shrink-0" />
         <input
@@ -79,29 +78,23 @@ function GlobalSearch() {
           value={query}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
-          onKeyDown={handleKeyDown}
-          placeholder="Search events... (Ctrl+K)"
+          placeholder="Search events..."
           className="bg-transparent text-sm outline-none w-full placeholder-gray-400"
         />
-        {query ? (
+        {query && (
           <button onClick={() => { setQuery(''); setOpen(false); }} className="text-gray-300 hover:text-gray-500">
             <X size={13} />
           </button>
-        ) : (
-          <kbd className="hidden sm:inline-flex text-[10px] text-gray-300 border border-gray-200 rounded px-1.5 py-0.5 font-mono">
-            ⌘K
-          </kbd>
         )}
       </div>
 
       <AnimatePresence>
         {open && query.trim().length >= 2 && (
           <motion.div
-            initial={{ opacity: 0, y: 6, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{   opacity: 0, y: 6, scale: 0.98 }}
-            transition={{ duration: 0.15 }}
-            className="absolute top-full left-0 mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50 w-96"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            className="absolute top-full left-0 mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50 w-full md:w-96"
           >
             <div className="px-4 py-2.5 border-b border-gray-50 flex items-center justify-between">
               <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
@@ -117,49 +110,30 @@ function GlobalSearch() {
               <div className="px-4 py-8 text-center">
                 <p className="text-2xl mb-2">🔍</p>
                 <p className="text-sm font-medium text-gray-500">No events found</p>
-                <p className="text-xs text-gray-400 mt-1">Try a different search term</p>
               </div>
             ) : (
-              <div className="py-1.5 max-h-80 overflow-y-auto">
+              <div className="py-1.5 max-h-64 overflow-y-auto">
                 {results.map((event) => {
                   const catStyle = CAT_COLORS[event.category] || 'bg-gray-100 text-gray-600';
-                  const counts   = event.fileCounts || {};
-                  const totalFiles = (counts.DOCUMENT||0) + (counts.SPREADSHEET||0) + (counts.IMAGE||0);
                   return (
                     <button key={event.id} onClick={() => handleSelect(event.id)}
                             className="w-full flex items-start gap-3 px-4 py-3 hover:bg-purple-50 transition-colors text-left group">
-                      <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0 group-hover:bg-purple-200 transition-colors">
+                      <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
                         <CalendarCheck size={16} className="text-purple-600" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-0.5">
-                          <p className="text-sm font-semibold text-gray-900 truncate group-hover:text-purple-700">{event.title}</p>
+                          <p className="text-sm font-semibold text-gray-900 truncate">{event.title}</p>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${catStyle}`}>{event.category}</span>
                         </div>
                         <p className="text-xs text-gray-400 truncate">{event.description}</p>
-                        <div className="flex items-center gap-3 mt-1">
-                          <span className="text-[10px] text-gray-400">
-                            📅 {new Date(event.date).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}
-                          </span>
-                          <span className="text-[10px] text-gray-400">👤 {event.coordinator}</span>
-                          {totalFiles > 0 && <span className="text-[10px] text-gray-400">📁 {totalFiles} files</span>}
-                        </div>
                       </div>
-                      <ChevronRight size={14} className="text-gray-300 group-hover:text-purple-400 flex-shrink-0 mt-1 transition-colors" />
+                      <ChevronRight size={14} className="text-gray-300 flex-shrink-0 mt-1" />
                     </button>
                   );
                 })}
               </div>
             )}
-
-            <div className="px-4 py-2 border-t border-gray-50 flex items-center gap-3">
-              <span className="text-[10px] text-gray-300 flex items-center gap-1">
-                <kbd className="border border-gray-200 rounded px-1 font-mono">↵</kbd> open first
-              </span>
-              <span className="text-[10px] text-gray-300 flex items-center gap-1">
-                <kbd className="border border-gray-200 rounded px-1 font-mono">Esc</kbd> close
-              </span>
-            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -169,11 +143,16 @@ function GlobalSearch() {
 
 // ─── App Layout ───────────────────────────────────────────
 export default function AppLayout() {
-  const [dark,      setDark]      = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const [dark,        setDark]        = useState(false);
+  const [collapsed,   setCollapsed]   = useState(false);
+  const [mobileOpen,  setMobileOpen]  = useState(false);
+  const [mobileSearch, setMobileSearch] = useState(false);
   const { organization, user, logout } = useAuthStore();
   const navigate  = useNavigate();
   const location  = useLocation();
+
+  // Close mobile sidebar on route change
+  useEffect(() => { setMobileOpen(false); setMobileSearch(false); }, [location.pathname]);
 
   const initials = organization?.name
     ? organization.name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)
@@ -189,146 +168,194 @@ export default function AppLayout() {
     n.end ? location.pathname === n.to : location.pathname.startsWith(n.to)
   )?.label || 'Dashboard';
 
+  // Shared sidebar content
+  const SidebarContent = ({ onNavClick }) => (
+    <>
+      <div className="flex items-center gap-2.5 px-4 py-5 h-16 flex-shrink-0">
+        <div className="w-8 h-8 bg-purple-500 rounded-xl flex items-center justify-center shadow-sm flex-shrink-0">
+          <span className="text-white font-heading font-bold text-sm">O</span>
+        </div>
+        {!collapsed && (
+          <span className="font-heading font-bold text-gray-900 whitespace-nowrap">
+            OrgDoc <span className="text-purple-500">AI</span>
+          </span>
+        )}
+      </div>
+
+      <nav className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto">
+        {NAV_ITEMS.map(({ to, label, icon: Icon, end, badge }) => (
+          <NavLink key={to} to={to} end={end}
+                   onClick={onNavClick}
+                   className={({ isActive }) =>
+                     `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 relative group
+                      ${isActive ? 'bg-purple-500 text-white' : 'text-gray-500 hover:bg-purple-50 hover:text-purple-600'}`}>
+            {({ isActive }) => (
+              <>
+                <Icon size={17} className="flex-shrink-0" />
+                {!collapsed && <span className="flex-1 whitespace-nowrap">{label}</span>}
+                {badge && !collapsed && (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0
+                    ${isActive ? 'bg-purple-400 text-white' : 'bg-purple-100 text-purple-600'}`}>{badge}</span>
+                )}
+                {collapsed && (
+                  <div className="absolute left-full ml-3 px-2.5 py-1.5 bg-gray-900 text-white text-xs font-medium
+                                  rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-50 shadow-lg">{label}</div>
+                )}
+              </>
+            )}
+          </NavLink>
+        ))}
+      </nav>
+
+      <div className="p-2 border-t border-gray-100 flex-shrink-0">
+        <div className={`flex items-center gap-2.5 p-2.5 bg-purple-50 rounded-xl ${collapsed ? 'justify-center' : ''}`}>
+          <div className="w-8 h-8 rounded-full bg-purple-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">{initials}</div>
+          {!collapsed && (
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-gray-900 truncate">{organization?.name}</p>
+              <p className="text-[10px] text-gray-400">{user?.role}</p>
+            </div>
+          )}
+        </div>
+        <button onClick={handleLogout}
+                className={`mt-1.5 w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-400
+                           hover:text-red-500 hover:bg-red-50 rounded-xl transition-all ${collapsed ? 'justify-center' : ''}`}>
+          <LogOut size={14} className="flex-shrink-0" />
+          {!collapsed && <span>Sign out</span>}
+        </button>
+      </div>
+    </>
+  );
+
   return (
     <div className={`flex h-screen overflow-hidden ${dark ? 'dark' : ''}`}>
+
+      {/* ── Desktop Sidebar ── */}
       <motion.aside
         animate={{ width: collapsed ? 68 : 224 }}
         transition={{ duration: 0.25, ease: 'easeInOut' }}
-        className="relative bg-white border-r border-gray-100 flex flex-col h-full z-20 flex-shrink-0 overflow-hidden"
+        className="hidden md:flex relative bg-white border-r border-gray-100 flex-col h-full z-20 flex-shrink-0 overflow-hidden"
       >
-        <div className="flex items-center gap-2.5 px-4 py-5 h-16 flex-shrink-0">
-          <div className="w-8 h-8 bg-purple-500 rounded-xl flex items-center justify-center shadow-sm flex-shrink-0">
-            <span className="text-white font-heading font-bold text-sm">O</span>
-          </div>
-          <AnimatePresence initial={false}>
-            {!collapsed && (
-              <motion.span initial={{ opacity:0, width:0 }} animate={{ opacity:1, width:'auto' }}
-                           exit={{ opacity:0, width:0 }} transition={{ duration:0.2 }}
-                           className="font-heading font-bold text-gray-900 whitespace-nowrap overflow-hidden">
-                OrgDoc <span className="text-purple-500">AI</span>
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </div>
-
         <button onClick={() => setCollapsed(!collapsed)}
                 className="absolute -right-4 top-12 w-8 h-8 bg-purple-500 border-2 border-white rounded-full
-                           flex items-center justify-center shadow-md z-30 hover:bg-purple-600 hover:scale-110
-                           text-white transition-all duration-150"
-                title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+                           flex items-center justify-center shadow-md z-30 hover:bg-purple-600 text-white transition-all">
           {collapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
         </button>
-
-        <nav className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto overflow-x-hidden">
-          {NAV_ITEMS.map(({ to, label, icon: Icon, end, badge }) => (
-            <NavLink key={to} to={to} end={end} title={collapsed ? label : undefined}
-                     className={({ isActive }) =>
-                       `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 cursor-pointer group relative
-                        ${isActive ? 'bg-purple-500 text-white' : 'text-gray-500 hover:bg-purple-50 hover:text-purple-600'}`}>
-              {({ isActive }) => (
-                <>
-                  <Icon size={17} className="flex-shrink-0" />
-                  <AnimatePresence initial={false}>
-                    {!collapsed && (
-                      <motion.span initial={{ opacity:0, width:0 }} animate={{ opacity:1, width:'auto' }}
-                                   exit={{ opacity:0, width:0 }} transition={{ duration:0.2 }}
-                                   className="flex-1 whitespace-nowrap overflow-hidden">{label}</motion.span>
-                    )}
-                  </AnimatePresence>
-                  {badge && !collapsed && (
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0
-                      ${isActive ? 'bg-purple-400 text-white' : 'bg-purple-100 text-purple-600'}`}>{badge}</span>
-                  )}
-                  {collapsed && (
-                    <div className="absolute left-full ml-3 px-2.5 py-1.5 bg-gray-900 text-white text-xs font-medium
-                                    rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none
-                                    transition-opacity duration-150 z-50 shadow-lg">{label}</div>
-                  )}
-                </>
-              )}
-            </NavLink>
-          ))}
-
-          <AnimatePresence initial={false}>
-            {!collapsed && (
-              <motion.div initial={{ opacity:0, height:0 }} animate={{ opacity:1, height:'auto' }}
-                          exit={{ opacity:0, height:0 }} transition={{ duration:0.2 }} className="overflow-hidden">
-                <div className="pt-3 pb-1">
-                  <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-wider px-3">Quick Links</p>
-                </div>
-                {QUICK_LINKS.map(({ to, label, emoji }) => (
-                  <NavLink key={to} to={to}
-                           className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
-                                      text-gray-500 hover:bg-purple-50 hover:text-purple-600 transition-all duration-150 cursor-pointer">
-                    <span className="text-base flex-shrink-0">{emoji}</span>
-                    <span className="whitespace-nowrap">{label}</span>
-                  </NavLink>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </nav>
-
-        <div className="p-2 border-t border-gray-100 flex-shrink-0">
-          <div className={`flex items-center gap-2.5 p-2.5 bg-purple-50 rounded-xl cursor-pointer hover:bg-purple-100 transition-colors ${collapsed ? 'justify-center' : ''}`}
-               title={collapsed ? organization?.name : undefined}>
-            <div className="w-8 h-8 rounded-full bg-purple-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">{initials}</div>
-            <AnimatePresence initial={false}>
-              {!collapsed && (
-                <motion.div initial={{ opacity:0, width:0 }} animate={{ opacity:1, width:'auto' }}
-                            exit={{ opacity:0, width:0 }} transition={{ duration:0.2 }} className="min-w-0 overflow-hidden">
-                  <p className="text-xs font-semibold text-gray-900 truncate">{organization?.name}</p>
-                  <p className="text-[10px] text-gray-400">{user?.role}</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-          <button onClick={handleLogout} title={collapsed ? 'Sign out' : undefined}
-                  className={`mt-1.5 w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-400
-                             hover:text-red-500 hover:bg-red-50 rounded-xl transition-all ${collapsed ? 'justify-center' : ''}`}>
-            <LogOut size={14} className="flex-shrink-0" />
-            <AnimatePresence initial={false}>
-              {!collapsed && (
-                <motion.span initial={{ opacity:0, width:0 }} animate={{ opacity:1, width:'auto' }}
-                             exit={{ opacity:0, width:0 }} transition={{ duration:0.2 }}
-                             className="whitespace-nowrap overflow-hidden">Sign out</motion.span>
-              )}
-            </AnimatePresence>
-          </button>
-        </div>
+        <SidebarContent />
       </motion.aside>
 
+      {/* ── Mobile Sidebar Overlay ── */}
+      <AnimatePresence>
+        {mobileOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 z-30 md:hidden"
+              onClick={() => setMobileOpen(false)}
+            />
+            <motion.aside
+              initial={{ x: -280 }}
+              animate={{ x: 0 }}
+              exit={{ x: -280 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed left-0 top-0 h-full w-64 bg-white z-40 flex flex-col md:hidden shadow-2xl"
+            >
+              <SidebarContent onNavClick={() => setMobileOpen(false)} />
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* ── Main Content ── */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <header className="h-16 bg-white border-b border-gray-100 flex items-center gap-4 px-6 flex-shrink-0">
-          <button onClick={() => setCollapsed(!collapsed)}
-                  className="md:hidden w-9 h-9 rounded-xl border border-gray-200 flex items-center justify-center text-gray-400 hover:bg-purple-50 hover:text-purple-500 transition-all">
+
+        {/* Header */}
+        <header className="h-14 md:h-16 bg-white border-b border-gray-100 flex items-center gap-3 px-4 md:px-6 flex-shrink-0">
+          {/* Mobile menu button */}
+          <button onClick={() => setMobileOpen(true)}
+                  className="md:hidden w-9 h-9 rounded-xl border border-gray-200 flex items-center justify-center text-gray-400 hover:bg-purple-50 hover:text-purple-500 transition-all flex-shrink-0">
             <Menu size={16} />
           </button>
-          <div className="flex-1">
-            <h1 className="font-heading font-bold text-lg text-gray-900">{pageTitle}</h1>
+
+          <div className="flex-1 min-w-0">
+            <h1 className="font-heading font-bold text-base md:text-lg text-gray-900 truncate">{pageTitle}</h1>
           </div>
-          <GlobalSearch />
-          <div className="flex items-center gap-2">
+
+          {/* Desktop search */}
+          <div className="hidden md:block w-64">
+            <GlobalSearch />
+          </div>
+
+          <div className="flex items-center gap-1.5 md:gap-2">
+            {/* Mobile search toggle */}
+            <button onClick={() => setMobileSearch(!mobileSearch)}
+                    className="md:hidden w-9 h-9 rounded-xl border border-gray-200 flex items-center justify-center text-gray-400 hover:bg-purple-50 hover:text-purple-500 transition-all">
+              <Search size={16} />
+            </button>
+
             <button onClick={() => setDark(!dark)}
-                    className="w-9 h-9 rounded-xl border border-gray-200 flex items-center justify-center text-gray-400 hover:bg-purple-50 hover:text-purple-500 transition-all">
+                    className="hidden md:flex w-9 h-9 rounded-xl border border-gray-200 items-center justify-center text-gray-400 hover:bg-purple-50 hover:text-purple-500 transition-all">
               {dark ? <Sun size={16} /> : <Moon size={16} />}
             </button>
+
             <button className="relative w-9 h-9 rounded-xl border border-gray-200 flex items-center justify-center text-gray-400 hover:bg-purple-50 hover:text-purple-500 transition-all">
               <Bell size={16} />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-400 rounded-full border-2 border-white" />
             </button>
-            <div className="hidden sm:flex items-center gap-2 bg-purple-50 px-3 py-1.5 rounded-full cursor-pointer">
+
+            <div className="hidden sm:flex items-center gap-2 bg-purple-50 px-3 py-1.5 rounded-full">
               <div className="w-7 h-7 rounded-full bg-purple-500 text-white text-xs font-bold flex items-center justify-center">{initials}</div>
-              <span className="text-sm font-semibold text-gray-800 max-w-24 truncate">{organization?.name}</span>
+              <span className="text-sm font-semibold text-gray-800 max-w-24 truncate hidden lg:block">{organization?.name}</span>
             </div>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-6 bg-purple-50">
-          <motion.div key={location.pathname} initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }}
-                      transition={{ duration:0.25 }} className="max-w-7xl mx-auto">
+
+        {/* Mobile search bar */}
+        <AnimatePresence>
+          {mobileSearch && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="md:hidden bg-white border-b border-gray-100 px-4 py-2 overflow-hidden"
+            >
+              <GlobalSearch onClose={() => setMobileSearch(false)} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Page content */}
+        <main className="flex-1 overflow-y-auto p-3 md:p-6 bg-purple-50 pb-20 md:pb-6">
+          <motion.div key={location.pathname} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.25 }} className="max-w-7xl mx-auto">
             <Outlet />
           </motion.div>
         </main>
+
+        {/* ── Mobile Bottom Nav ── */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 z-20 flex items-center justify-around px-2 py-2 safe-area-pb">
+          {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+            <NavLink key={to} to={to} end={end}
+                     className={({ isActive }) =>
+                       `flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all ${
+                         isActive ? 'text-purple-600' : 'text-gray-400'
+                       }`}>
+              {({ isActive }) => (
+                <>
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
+                    isActive ? 'bg-purple-100' : ''
+                  }`}>
+                    <Icon size={18} />
+                  </div>
+                  <span className="text-[10px] font-medium">{label.split(' ')[0]}</span>
+                </>
+              )}
+            </NavLink>
+          ))}
+        </nav>
+
       </div>
     </div>
   );
