@@ -1,4 +1,5 @@
 // src/components/events/EventDetail.jsx
+import { compressFiles } from '../../utils/imageCompression';
 import { useState, useCallback, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
@@ -256,13 +257,26 @@ export default function EventDetail() {
     }
   );
 
-  const onDrop = useCallback((acceptedFiles) => {
-    if (!acceptedFiles.length) return;
-    setUploading(true);
+  const onDrop = useCallback(async (acceptedFiles) => {
+  if (!acceptedFiles.length) return;
+  setUploading(true);
+  setUploadProgress(0);
+
+  try {
+    const processedFiles = await compressFiles(acceptedFiles, ({ fileIndex, total, percent }) => {
+      const overall = Math.round((fileIndex / total) * 30 + (percent / 100) * (30 / total));
+      setUploadProgress(overall);
+    });
+    const formData = new FormData();
+    processedFiles.forEach((f) => formData.append('files', f));
+    uploadMutation.mutate({ formData });
+  } catch (err) {
+    toast.error('Compression failed, uploading original...');
     const formData = new FormData();
     acceptedFiles.forEach((f) => formData.append('files', f));
     uploadMutation.mutate({ formData });
-  }, [id]);
+  }
+}, [id]);
 
   if (isLoading) return (
     <div className="space-y-4">
@@ -298,7 +312,7 @@ export default function EventDetail() {
         </span>
         <h2 className="font-heading font-bold text-2xl text-gray-900 mb-4">{event.title}</h2>
 
-        <div className="flex items-center gap-3 flex-wrap mb-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 flex-wrap mb-4">
           <span className="flex items-center gap-1.5 text-xs text-gray-500 bg-gray-50 border border-gray-100 px-3 py-1.5 rounded-full">
             <Calendar size={12} /> {format(new Date(event.date), 'MMMM d, yyyy')}
           </span>
@@ -325,24 +339,25 @@ export default function EventDetail() {
         )}
       </div>
 
-      {/* File Tabs */}
-      <div className="flex gap-1 bg-white border border-gray-100 rounded-xl p-1 shadow-sm">
-        {TABS.map(({ id: tabId, label, icon: Icon }) => (
-          <button key={tabId} onClick={() => setActiveTab(tabId)}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold
-                              rounded-lg transition-all
-                              ${activeTab === tabId
-                                ? 'bg-purple-500 text-white shadow-sm'
-                                : 'text-gray-400 hover:text-gray-700 hover:bg-gray-50'}`}>
-            <Icon size={15} />
-            {label}
-            <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold
-                              ${activeTab === tabId ? 'bg-purple-400 text-white' : 'bg-gray-100 text-gray-500'}`}>
-              {tabFiles[tabId]?.length || 0}
-            </span>
-          </button>
-        ))}
-      </div>
+   {/* File Tabs */}
+<div className="flex gap-1 bg-white border border-gray-100 rounded-xl p-1 shadow-sm overflow-x-auto">
+  {TABS.map(({ id: tabId, label, icon: Icon }) => (
+    <button key={tabId} onClick={() => setActiveTab(tabId)}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs md:text-sm font-semibold
+                        rounded-lg transition-all min-w-0
+                        ${activeTab === tabId
+                          ? 'bg-purple-500 text-white shadow-sm'
+                          : 'text-gray-400 hover:text-gray-700 hover:bg-gray-50'}`}>
+      <Icon size={14} className="flex-shrink-0" />
+      <span className="hidden sm:inline truncate">{label}</span>
+      <span className="sm:hidden text-[10px] font-medium truncate">{label.split(' ')[0]}</span>
+      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0
+                        ${activeTab === tabId ? 'bg-purple-400 text-white' : 'bg-gray-100 text-gray-500'}`}>
+        {tabFiles[tabId]?.length || 0}
+      </span>
+    </button>
+  ))}
+</div>
 
       {/* Upload + Files */}
       <div className="card p-5 space-y-4">
@@ -407,8 +422,7 @@ export default function EventDetail() {
                         <button
                           onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(file.id); }}
                           className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/40
-                                     flex items-center justify-center text-white
-                                     opacity-0 group-hover:opacity-100 hover:bg-red-500 transition-all"
+                                     flex items-center justify-center text-white hover:bg-red-500"
                         >
                           <Trash2 size={11} />
                         </button>

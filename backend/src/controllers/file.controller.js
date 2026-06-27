@@ -1,15 +1,28 @@
 // src/controllers/file.controller.js
-// Handles file uploads to Supabase Storage + triggers RAG indexing
+// Handles file uploads to Supabase Storage + RAG indexing
+// Documents/spreadsheets are gzip-compressed before upload (done in upload.middleware.js)
+// Images are pre-compressed by the frontend (browser-image-compression)
 
 const { PrismaClient } = require('@prisma/client');
-const { uploadFile: uploadToSupabase, deleteFile: deleteFromSupabase } = require('../utils/storage');
+const { createClient } = require('@supabase/supabase-js');
 const { indexFile, removeFileIndex } = require('../services/rag.service');
 const path = require('path');
-const fs = require('fs');
+const fs   = require('fs');
+const zlib = require('zlib');
+const { promisify } = require('util');
 
-const prisma = new PrismaClient();
+const gunzip = promisify(zlib.gunzip);
+const prisma  = new PrismaClient();
 
-// ─── Determine File Type from MIME ────────────────────────
+// ─── Supabase Storage client ──────────────────────────────
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
+
+const STORAGE_BUCKET = process.env.SUPABASE_BUCKET || 'orgdoc-files';
+
+// ─── Determine File Type ──────────────────────────────────
 const getFileType = (mimeType) => {
   if (['application/pdf', 'application/msword',
        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -22,7 +35,8 @@ const getFileType = (mimeType) => {
   if (['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'].includes(mimeType))
     return 'IMAGE';
 
-  if (['video/mp4', 'video/quicktime', 'video/x-msvideo'].includes(mimeType)) return 'VIDEO';
+  if (['video/mp4', 'video/quicktime', 'video/x-msvideo'].includes(mimeType))
+    return 'VIDEO';
 
   return 'DOCUMENT';
 };
@@ -35,92 +49,124 @@ const uploadFile = async (req, res, next) => {
 
     if (!file) return res.status(400).json({ error: 'No file provided.' });
 
-    console.log(`[FILE-UPLOAD] Starting upload for: ${file.originalname} (${file.size} bytes)`);
-
-    // Verify event belongs to this org
     const event = await prisma.event.findFirst({
       where: { id: eventId, organizationId: req.user.orgId },
     });
     if (!event) return res.status(404).json({ error: 'Event not found.' });
 
-    const fileType = getFileType(file.mimetype);
+    const fileType   = getFileType(file.mimetype);
+    const isCompressed = file.compressed === true;
 
-    // Build storage path: orgId/eventId/timestamp_filename
-    const safeName = file.originalname.replace(/\s+/g, '_');
-    const storagePath = `${req.user.orgId}/${eventId}/${Date.now()}_${safeName}`;
+    // Storage path — add .gz suffix for compressed files so Supabase
+    // knows the content encoding
+    const sanitized   = file.originalname.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9._-]/g, '');
+    const storageName = isCompressed ? `${Date.now()}_${sanitized}.gz` : `${Date.now()}_${sanitized}`;
+    const storagePath = `${req.user.orgId}/${eventId}/${storageName}`;
 
-    console.log(`[FILE-UPLOAD] Uploading to Supabase path: ${storagePath}`);
+    // Upload options — set Content-Encoding: gzip for compressed files
+    // so browsers and download clients decompress automatically
+    const uploadOptions = {
+      contentType: file.mimetype,
+      upsert:      false,
+      ...(isCompressed && {
+        contentEncoding: 'gzip',
+        cacheControl:    '3600',
+      }),
+    };
 
-    // Upload to Supabase Storage
-    const { url, path: savedPath } = await uploadToSupabase(
-      file.buffer,
-      storagePath,
-      file.mimetype
-    );
+    const { error: uploadError } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(storagePath, file.buffer, uploadOptions);
 
-    console.log(`[FILE-UPLOAD] Supabase upload success. URL: ${url}`);
+    if (uploadError) {
+      console.error('[FILE] Supabase upload error:', uploadError.message);
+      return res.status(500).json({ error: 'File upload failed: ' + uploadError.message });
+    }
 
-    // Save file record to DB
-    // publicId stores the storage path (used for deletion)
+    // Public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from(STORAGE_BUCKET)
+      .getPublicUrl(storagePath);
+
+    // Save to DB
+    // Store original (pre-compression) size so UI shows correct file size
     const savedFile = await prisma.file.create({
       data: {
-        name: safeName,
+        name:         sanitized,
         originalName: file.originalname,
-        type: fileType,
-        mimeType: file.mimetype,
-        size: file.size,
-        url,
-        publicId: savedPath,  // storage path for deletion
+        type:         fileType,
+        mimeType:     file.mimetype,
+        size:         isCompressed ? file.originalSize : file.size, // show original size in UI
+        url:          publicUrl,
+        publicId:     storagePath,
         eventId,
         uploadedById: req.user.userId,
-        isIndexed: false,
+        isIndexed:    false,
       },
     });
 
-    console.log(`[FILE-UPLOAD] File saved to DB with ID: ${savedFile.id}`);
-
-    // Log activity
+    // Activity log
     await prisma.activityLog.create({
       data: {
-        action: 'uploaded file',
-        details: `Uploaded ${file.originalname} to "${event.title}"`,
-        userId: req.user.userId,
+        action:  'uploaded file',
+        details: `Uploaded ${file.originalname} to "${event.title}"` +
+                 (isCompressed
+                   ? ` (compressed: ${(file.size/1024).toFixed(0)}KB stored)`
+                   : ''),
+        userId:  req.user.userId,
         eventId,
       },
     });
 
-    // Trigger async RAG indexing for documents and spreadsheets
+    // Async RAG indexing — decompress first so text extraction works
     if (fileType === 'DOCUMENT' || fileType === 'SPREADSHEET') {
-      const tempPath = path.join('/tmp', `${savedFile.id}_${file.originalname}`);
-      fs.writeFileSync(tempPath, file.buffer);
+      const tmpDir  = process.platform === 'win32' ? require('os').tmpdir() : '/tmp';
+      const tmpPath = path.join(tmpDir, `${savedFile.id}_${sanitized}`);
+
+      // Write decompressed buffer for text extraction
+      const bufferToWrite = isCompressed
+        ? await gunzip(file.buffer)
+        : file.buffer;
+
+      fs.writeFileSync(tmpPath, bufferToWrite);
 
       indexFile({
-        fileId: savedFile.id,
-        filePath: tempPath,
-        mimeType: file.mimetype,
-        fileName: file.originalname,
+        fileId:     savedFile.id,
+        filePath:   tmpPath,
+        mimeType:   file.mimetype,
+        fileName:   file.originalname,
         eventId,
         eventTitle: event.title,
-        orgId: req.user.orgId,
+        orgId:      req.user.orgId,
       }).then(async (success) => {
         if (success) {
           await prisma.file.update({
             where: { id: savedFile.id },
-            data: { isIndexed: true },
+            data:  { isIndexed: true },
           });
         }
-        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+        if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
       }).catch(console.error);
     }
 
+    const compressionInfo = isCompressed
+      ? {
+          compressed:       true,
+          storedSizeKB:     Math.round(file.size / 1024),
+          originalSizeKB:   Math.round(file.originalSize / 1024),
+          savingPercent:    Math.round(((file.originalSize - file.size) / file.originalSize) * 100),
+        }
+      : { compressed: false };
+
     res.status(201).json({
-      id: savedFile.id,
-      name: savedFile.originalName,
-      type: savedFile.type,
-      size: savedFile.size,
-      url: savedFile.url,
-      mimeType: savedFile.mimeType,
-      createdAt: savedFile.createdAt,
+      id:          savedFile.id,
+      name:        savedFile.originalName,
+      type:        savedFile.type,
+      size:        savedFile.size,
+      url:         savedFile.url,
+      mimeType:    savedFile.mimeType,
+      createdAt:   savedFile.createdAt,
+      compression: compressionInfo,
     });
   } catch (err) {
     next(err);
@@ -131,7 +177,7 @@ const uploadFile = async (req, res, next) => {
 const getEventFiles = async (req, res, next) => {
   try {
     const { eventId } = req.params;
-    const { type } = req.query;
+    const { type }    = req.query;
 
     const files = await prisma.file.findMany({
       where: {
@@ -139,9 +185,7 @@ const getEventFiles = async (req, res, next) => {
         event: { organizationId: req.user.orgId },
         ...(type && { type }),
       },
-      include: {
-        uploadedBy: { select: { name: true } },
-      },
+      include: { uploadedBy: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -155,28 +199,22 @@ const getEventFiles = async (req, res, next) => {
 const deleteFile = async (req, res, next) => {
   try {
     const file = await prisma.file.findFirst({
-      where: {
-        id: req.params.id,
-        event: { organizationId: req.user.orgId },
-      },
+      where: { id: req.params.id, event: { organizationId: req.user.orgId } },
     });
-
     if (!file) return res.status(404).json({ error: 'File not found.' });
 
-    // Delete from Supabase Storage using stored path
+    // Remove from Supabase Storage
     if (file.publicId) {
-      await deleteFromSupabase(file.publicId);
-      console.log(`[DELETE-FILE] Removed from Supabase Storage: ${file.publicId}`);
+      const { error } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .remove([file.publicId]);
+      if (error) console.error('[FILE] Supabase delete error:', error.message);
     }
 
-    // Remove from RAG index if indexed
-    if (file.isIndexed) {
-      await removeFileIndex(file.id, req.user.orgId);
-    }
+    // Remove from ChromaDB
+    if (file.isIndexed) await removeFileIndex(file.id, req.user.orgId);
 
-    // Remove from DB
     await prisma.file.delete({ where: { id: file.id } });
-
     res.json({ message: 'File deleted successfully.' });
   } catch (err) {
     next(err);
@@ -191,18 +229,16 @@ const getAllFiles = async (req, res, next) => {
     const files = await prisma.file.findMany({
       where: {
         event: { organizationId: req.user.orgId },
-        ...(type && { type }),
-        ...(search && {
-          originalName: { contains: search, mode: 'insensitive' },
-        }),
+        ...(type   && { type }),
+        ...(search && { originalName: { contains: search, mode: 'insensitive' } }),
       },
       include: {
-        event: { select: { title: true, date: true } },
+        event:      { select: { title: true, date: true } },
         uploadedBy: { select: { name: true } },
       },
       orderBy: { createdAt: 'desc' },
-      skip: (Number(page) - 1) * Number(limit),
-      take: Number(limit),
+      skip:    (page - 1) * limit,
+      take:    Number(limit),
     });
 
     res.json({ files });

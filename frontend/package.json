@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "axios": "^1.7.2",
+    "browser-image-compression": "^2.0.2",
     "date-fns": "^3.6.0",
     "framer-motion": "^11.2.10",
     "lucide-react": "^0.383.0",
@@ -16,8 +17,8 @@
     "react-dom": "^18.3.1",
     "react-dropzone": "^14.2.3",
     "react-hot-toast": "^2.4.1",
-    "react-router-dom": "^6.23.1",
     "react-query": "^3.39.3",
+    "react-router-dom": "^6.23.1",
     "recharts": "^2.12.7",
     "zustand": "^4.5.2"
   },
